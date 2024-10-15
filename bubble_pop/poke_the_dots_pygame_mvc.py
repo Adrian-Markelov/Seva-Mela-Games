@@ -11,6 +11,7 @@ pygame.init()
 
 # Constants
 CAMERA_WIDTH, CAMERA_HEIGHT = 640, 480
+
 ACTIVATION_RADIUS = 25  # Radius for finger activation
 GAME_DURATION = 20      # Game lasts for 20 seconds
 
@@ -31,7 +32,15 @@ class Model:
 
     def create_circles(self, num_circles):
         circles = []
-        for _ in range(num_circles):
+        for i in range(num_circles):
+            # rand.randint(100, 255),  # Red
+            # rand.randint(0, 155),    # Green
+            # rand.randint(100, 255)   # Blue
+            color = (255, 0, 0)
+            state = 'bad'
+            if i%2 == 0:
+                color = (0, 255, 0)
+                state = 'good'
             circle = {
                 'position': (
                     rand.randint(0, CAMERA_WIDTH),
@@ -41,11 +50,8 @@ class Model:
                     rand.choice([-2, -1, 1, 2]),
                     rand.choice([-2, -1, 1, 2])
                 ),
-                'color': (
-                    rand.randint(100, 255),  # Red
-                    rand.randint(0, 155),    # Green
-                    rand.randint(100, 255)   # Blue
-                )
+                'color': color,
+                'state': state
             }
             circles.append(circle)
         return circles
@@ -78,7 +84,7 @@ class Model:
             )
             if dist < ACTIVATION_RADIUS:
                 circles_to_remove.append(i)
-                self.score += 5
+                self.score += 5 if circle['state'] == 'good' else -5
 
         for index in reversed(circles_to_remove):
             self.circles.pop(index)
@@ -95,6 +101,14 @@ class View:
     def __init__(self, screen):
         self.screen = screen
 
+        self.screen_width, self.screen_height = pygame.display.get_surface().get_size()  # Get full screen size
+        # Scaling factor
+        self.scale_x = self.screen_width / CAMERA_WIDTH
+        self.scale_y = self.screen_height / CAMERA_HEIGHT
+    
+    def scale_point(self, point):
+        return (int(point[0] * self.scale_x), int(point[1] * self.scale_y))
+
     def draw_frame(self, frame_surface):
         self.screen.blit(frame_surface, (0, 0))
 
@@ -103,7 +117,7 @@ class View:
             pygame.draw.circle(
                 self.screen,
                 circle['color'],
-                (int(circle['position'][0]), int(circle['position'][1])),
+                self.scale_point(circle['position']),
                 25
             )
 
@@ -111,7 +125,7 @@ class View:
         pygame.draw.circle(
             self.screen,
             (255, 255, 0),  # Yellow
-            (int(finger_pos[0]), int(finger_pos[1])),
+            self.scale_point(finger_pos),
             ACTIVATION_RADIUS,
             2
         )
@@ -136,7 +150,7 @@ class View:
         self.screen.blit(restart_surface, restart_rect)
 
 class Controller:
-    def __init__(self):
+    def __init__(self, screen):
         self.model = Model()
         self.view = View(screen)
         self.detector = htm.HandDetector(detectionCon=0.7)
@@ -147,7 +161,7 @@ class Controller:
 
     def process_events(self):
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 self.running = False
             if self.model.game_over:
                 if event.type == pygame.KEYDOWN:
@@ -155,6 +169,7 @@ class Controller:
                         self.model.reset_game()
 
     def update(self):
+        # We should move this to "not game over" since we can have a simple default background
         # Capture frame
         success, img = self.cap.read()
         if not success:
@@ -162,25 +177,22 @@ class Controller:
             self.running = False
             return
 
-        # Hand detection
-        img = self.detector.findHands(img)
-        lmList = self.detector.findPosition(img, draw=False)
-
-        # Convert image for Pygame
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = np.rot90(img)
-        frame_surface = pygame.surfarray.make_surface(img)
-
-        # Draw frame
-        self.view.draw_frame(frame_surface)
-
         if not self.model.game_over:
             # Update game state
             self.model.update_game_state()
 
-            # Update and draw circles
-            self.model.update_circles()
-            self.view.draw_circles(self.model.circles)
+            # Hand detection
+            self.detector.findHands(img, draw=False)
+            lmList = self.detector.findPosition(img, draw=False)
+            
+             # Convert image for Pygame
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = np.rot90(img)
+            camera_frame_surface = pygame.surfarray.make_surface(img)
+            camera_frame_surface = pygame.transform.scale(camera_frame_surface, (self.view.screen_width, self.view.screen_height))
+
+            # Draw Camera Frame
+            self.view.draw_frame(camera_frame_surface)
 
             if lmList:
                 index_finger_tip = lmList[8][1], lmList[8][2]
@@ -190,6 +202,10 @@ class Controller:
                 self.view.draw_halo(index_finger_tip)
                 # Check for collisions
                 self.model.check_collisions(index_finger_tip)
+            
+            # Update and draw circles
+            self.model.update_circles()
+            self.view.draw_circles(self.model.circles)
 
             # Draw score and time
             time_left = GAME_DURATION - (time.time() - self.model.start_time)
@@ -210,11 +226,11 @@ class Controller:
         self.cap.release()
         pygame.quit()
 
-# Initialize Pygame screen
-screen = pygame.display.set_mode((CAMERA_WIDTH, CAMERA_HEIGHT))
-pygame.display.set_caption("Hand Tracking Game")
-
 # Run the game
 if __name__ == "__main__":
-    controller = Controller()
+    # Initialize Pygame screen
+    # screen = pygame.display.set_mode((CAMERA_WIDTH, CAMERA_HEIGHT))
+    full_screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)  # Full-screen Pygame
+    pygame.display.set_caption("Hand Tracking Game")
+    controller = Controller(full_screen)
     controller.run()
