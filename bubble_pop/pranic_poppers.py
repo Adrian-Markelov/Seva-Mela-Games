@@ -289,8 +289,10 @@ class Controller:
              # Convert image for Pygame
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img = np.rot90(img)
-            # camera_frame_surface = pygame.surfarray.make_surface(img)
-            # camera_frame_surface = pygame.transform.scale(camera_frame_surface, (self.view.screen_width, self.view.screen_height))
+            camera_frame_surface = pygame.surfarray.make_surface(img)
+            camera_view_shape = (250,150)
+            camera_frame_surface = pygame.transform.scale(camera_frame_surface, camera_view_shape)
+            self.view.screen.blit(camera_frame_surface, (self.view.screen_width - camera_view_shape[0] - 10, self.view.screen_height - camera_view_shape[1] - 10))
 
             # # Draw Camera Frame
             # self.view.draw_frame(camera_frame_surface)
